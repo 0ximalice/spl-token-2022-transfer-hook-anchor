@@ -2,35 +2,26 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Transferhook } from "../target/types/transferhook";
 import {
-  ExtensionType,
-  TOKEN_2022_PROGRAM_ID,
-  getMintLen,
-  createInitializeMintInstruction,
-  ExtraAccountMetaLayout,
-  ExtraAccountMetaListLayout,
-  createInitializeTransferHookInstruction,
-  transferCheckedWithTransferHook,
-  addExtraAccountsToInstruction,
-} from "/Users/imalice/Workspace/github.com/solana-program-library/token/js/lib/cjs/index.js";
-import {
-  AccountMeta,
   Connection,
-  LAMPORTS_PER_SOL,
   PublicKey,
   Signer,
   SystemProgram,
   Transaction,
-  TransactionInstruction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
+  ExtensionType,
+  TOKEN_2022_PROGRAM_ID,
+  getMintLen,
+  createInitializeMintInstruction,
+  createInitializeTransferHookInstruction,
+  addExtraAccountsToInstruction,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { createHash } from "crypto";
 
 async function newAccountWithLamports(
   connection: Connection,
@@ -102,6 +93,7 @@ describe("transfer-hook", () => {
     // 1. Create mint account
     // 2. Initialize transfer-hook
     // 3. Initialize mint account
+
     const extensions = [ExtensionType.TransferHook];
     const mintLen = getMintLen(extensions);
     const lamports =
@@ -144,15 +136,6 @@ describe("transfer-hook", () => {
       TRANSFER_HOOK_PROGRAM_ID
     );
 
-    console.log(
-      "transfer hook program id:",
-      TRANSFER_HOOK_PROGRAM_ID.toBase58()
-    );
-    console.log("authority:", authority.publicKey.toBase58());
-    console.log("counter:", counterPDA.toBase58());
-    console.log("mint:", mint.publicKey.toBase58());
-    console.log("extra account metas pda:", _extractAccountMetaPDA.toBase58());
-
     const initExtraAccountMetaInstruction = await program.methods
       .initializeExtraAccountMetaList(_bump)
       .accounts({
@@ -185,7 +168,9 @@ describe("transfer-hook", () => {
 
   it("mint token", async () => {
     // 1. Create associated token account for authority
+    // 1. Create associated token account for recipient
     // 2. Mint 100 tokens to authority
+
     const mintToTransaction = new Transaction().add(
       createAssociatedTokenAccountInstruction(
         authority.publicKey,
@@ -244,32 +229,12 @@ describe("transfer-hook", () => {
       TOKEN_2022_PROGRAM_ID
     );
 
-    try {
-      // const transferTransaction = new Transaction().add(hydratedInstruction);
-
-      // const res = await sendAndConfirmTransaction(
-      //   provider.connection,
-      //   transferTransaction,
-      //   [authority]
-      // );
-
-      const res = await transferCheckedWithTransferHook(
-        provider.connection,
-        authority,
-        authorityATA,
-        mint.publicKey,
-        recipientATA,
-        authority,
-        BigInt(10 ** decimals),
-        decimals,
-        [],
-        undefined,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      console.log("Transfer hash:", res);
-    } catch (e) {
-      console.log(e);
-    }
+    const transferTransaction = new Transaction().add(hydratedInstruction);
+    const signature = await sendAndConfirmTransaction(
+      provider.connection,
+      transferTransaction,
+      [authority]
+    );
+    console.log("Transfer hash:", signature);
   });
 });
