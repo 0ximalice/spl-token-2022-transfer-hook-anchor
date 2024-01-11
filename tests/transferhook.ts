@@ -1,6 +1,18 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Transferhook } from "../target/types/transferhook";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  ExtensionType,
+  TOKEN_2022_PROGRAM_ID,
+  addExtraAccountsToInstruction,
+  createAssociatedTokenAccountInstruction,
+  createInitializeMintInstruction,
+  createInitializeTransferHookInstruction,
+  createMintToInstruction,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddressSync,
+  getMintLen,
+} from "@solana/spl-token";
 import {
   Connection,
   PublicKey,
@@ -9,19 +21,7 @@ import {
   Transaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import {
-  ExtensionType,
-  TOKEN_2022_PROGRAM_ID,
-  getMintLen,
-  createInitializeMintInstruction,
-  createInitializeTransferHookInstruction,
-  addExtraAccountsToInstruction,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  createMintToInstruction,
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
+import { Transferhook } from "../target/types/transferhook";
 
 async function newAccountWithLamports(
   connection: Connection,
@@ -32,7 +32,13 @@ async function newAccountWithLamports(
     account.publicKey,
     lamports
   );
-  await connection.confirmTransaction(signature);
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash({ commitment: "confirmed" });
+  await connection.confirmTransaction({
+    signature,
+    blockhash,
+    lastValidBlockHeight,
+  });
   return account;
 }
 
@@ -52,7 +58,8 @@ describe("transfer-hook", () => {
   const decimals = 6;
   const provider = anchor.getProvider();
 
-  it("prepare accounts", async () => {
+  before(async () => {
+    //   it("prepare accounts", async () => {
     authority = await newAccountWithLamports(provider.connection);
     recipient = await newAccountWithLamports(provider.connection);
     mint = anchor.web3.Keypair.generate();
@@ -79,14 +86,17 @@ describe("transfer-hook", () => {
     );
     counterPDA = _counterPDA;
 
-    await program.methods
-      .initialize()
-      .accounts({
-        counter: counterPDA,
-        authority: authority.publicKey,
-      })
-      .signers([authority])
-      .rpc();
+    const tx = new Transaction().add(
+      await program.methods
+        .initialize()
+        .accounts({
+          counter: counterPDA,
+          authority: authority.publicKey,
+        })
+        .instruction()
+    );
+
+    await sendAndConfirmTransaction(provider.connection, tx, [authority]);
   });
 
   it("create mint with transfer-hook", async () => {

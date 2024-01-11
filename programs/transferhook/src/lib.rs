@@ -1,9 +1,32 @@
 use anchor_lang::prelude::*;
+use {
+    anchor_spl::
+        token_2022::spl_token_2022::{
+                extension::{
+                    transfer_hook::{TransferHookAccount},
+                    BaseStateWithExtensions, StateWithExtensions,
+                },
+                state::Account as Token2022Account,
+            },
+    spl_transfer_hook_interface::error::TransferHookError,
+};
 
 declare_id!("7aeu4HRHR4UwQndRDyh5f7nMwgxgH3rrtLgRntxdivZw");
 
 // Sha256(spl-transfer-hook-interface:execute)[..8]
 pub const EXECUTE_IX_TAG_LE: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
+
+fn check_token_account_is_transferring(account_data: &[u8]) -> Result<()> {
+	let token_account = StateWithExtensions::<Token2022Account>::unpack(account_data)?;
+	let extension = token_account.get_extension::<TransferHookAccount>()?;
+	if bool::from(extension.transferring) {
+		Ok(())
+	} else {
+		Err(Into::<ProgramError>::into(
+			TransferHookError::ProgramCalledOutsideOfTransfer,
+		))?
+	}
+}
 
 #[program]
 pub mod transferhook {
@@ -24,12 +47,16 @@ pub mod transferhook {
         Ok(())
     }
 
-    pub fn transfer_hook(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
+    pub fn transfer_hook<'a>(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         // Count the number of times the transfer hook has been invoked.
         let counter = &mut ctx.accounts.counter;
         counter.count += 1;
 
-        // TODO: check token accounts transfering status
+        let source_account = &ctx.accounts.source;
+    	let destination_account = &ctx.accounts.destination;
+
+        check_token_account_is_transferring(&source_account.to_account_info().try_borrow_data()?)?;
+    	check_token_account_is_transferring(&destination_account.to_account_info().try_borrow_data()?)?;
 
         msg!("Transfer hook invoked");
         msg!("Transfer amount: {}", amount);
@@ -71,7 +98,7 @@ pub mod transferhook {
         Ok(())
     }
 
-    pub fn fallback(program_id: &Pubkey, accounts: &[AccountInfo], ix_data: &[u8]) -> Result<()> {
+    pub fn fallback<'a>(program_id: &Pubkey, accounts: &'a[AccountInfo<'a>], ix_data: &[u8]) -> Result<()> {
         let mut ix_data: &[u8] = ix_data;
         let sighash: [u8; 8] = {
             let mut sighash: [u8; 8] = [0; 8];
@@ -84,7 +111,6 @@ pub mod transferhook {
             _ => Err(ProgramError::InvalidInstructionData.into()),
         }
     }
-
 }
 
 #[derive(Accounts)]
